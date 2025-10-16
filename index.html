@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Time Tracker de Tickets (LocalStorage)</title>
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --card: #111827;
+      --muted: #94a3b8;
+      --text: #e5e7eb;
+      --accent: #4f46e5;
+      --accent-2: #22c55e;
+      --danger: #ef4444;
+      --border: #1f2937;
+      --chip: #0e1726;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 24px; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell,
+      Noto Sans, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      background: linear-gradient(180deg, #0b0f14 0%, #0b0f14 50%, #0d1320 100%);
+      color: var(--text);
+    }
+    .container { max-width: 1100px; margin: 0 auto; }
+    .title {
+      font-weight: 800; font-size: clamp(22px, 3vw, 34px); letter-spacing: 0.2px; display:flex; align-items:center; gap:10px;
+    }
+    .badge { font-size: 12px; background: var(--chip); color: var(--muted); padding: 4px 8px; border-radius: 999px; border:1px solid var(--border); }
+    .grid { display: grid; gap: 16px; grid-template-columns: repeat(12, 1fr); }
+    .card { grid-column: span 12; background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.3); }
+    @media (min-width: 900px){ .left { grid-column: span 5; } .right{ grid-column: span 7; } }
+
+    label { font-size: 12px; color: var(--muted); display:block; margin: 8px 0 6px; }
+    input, select, button, textarea {
+      width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background:#0b1220; color: var(--text);
+      outline: none; transition: border .2s, transform .02s;
+    }
+    input:focus, select:focus, textarea:focus { border-color: #2b3b54; }
+    button { cursor: pointer; font-weight: 600; }
+    .btn-primary { background: var(--accent); border-color: #3e38c9; }
+    .btn-ghost { background: #0b1220; }
+    .btn-success { background: var(--accent-2); border-color:#16a34a; }
+    .btn-danger { background: var(--danger); border-color:#b91c1c; }
+    .row { display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; }
+    .col-12{ grid-column: span 12; } .col-6{ grid-column: span 6; } .col-4{ grid-column: span 4; } .col-3{ grid-column: span 3; }
+    @media (max-width: 720px){ .col-6,.col-4,.col-3{ grid-column: span 12; } }
+
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 8px; border-bottom: 1px solid var(--border); text-align: left; font-size: 14px; }
+    th { color: var(--muted); font-weight: 600; }
+    tr:hover td { background:#0b1220; }
+    .chips { display:flex; flex-wrap: wrap; gap: 8px; }
+    .chip { font-size: 12px; background: var(--chip); padding: 6px 10px; border-radius: 999px; border:1px solid var(--border); color:var(--muted); }
+    .right .card { overflow: hidden; }
+    .toolbar { display:flex; gap:10px; flex-wrap: wrap; align-items:center; }
+    .toolbar > * { flex: 1 1 160px; }
+    .toolbar .btns { display:flex; gap:10px; flex: 1 1 auto; }
+    .total { font-size: 28px; font-weight:800; }
+    .muted { color: var(--muted); }
+    .actions { display:flex; gap:6px; }
+    .linklike{ color: #93c5fd; text-decoration: underline; font-size: 12px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="title">⏱️ Time Tracker de Tickets <span class="badge">Datos guardados en tu navegador</span></div>
+    <p class="muted" style="margin-top:6px">Cargá tiempo invertido por ticket y obtené totales. Todo queda en <strong>localStorage</strong> (persistente incluso si cerrás el navegador).</p>
+
+    <div class="grid" style="margin-top: 18px;">
+      <!-- Panel izquierdo: formulario -->
+      <div class="card left">
+        <h3 style="margin: 4px 0 8px">Nuevo registro</h3>
+        <form id="entryForm">
+          <div class="row">
+            <div class="col-6">
+              <label for="date">Fecha</label>
+              <input type="date" id="date" required />
+            </div>
+            <div class="col-6">
+              <label for="ticket"># Ticket</label>
+              <input type="text" id="ticket" placeholder="Ej: INC-1234" required />
+            </div>
+            <div class="col-6">
+              <label for="time">Tiempo</label>
+              <input type="number" id="time" min="0" step="0.25" placeholder="Ej: 1.5" required />
+            </div>
+            <div class="col-6">
+              <label for="unit">Unidad</label>
+              <select id="unit">
+                <option value="hours">Horas</option>
+                <option value="minutes">Minutos</option>
+              </select>
+            </div>
+            <div class="col-12">
+              <label for="desc">Descripción (opcional)</label>
+              <textarea id="desc" rows="2" placeholder="Breve detalle del trabajo…"></textarea>
+            </div>
+            <div class="col-12" style="display:flex; gap:10px; margin-top: 8px;">
+              <button type="submit" class="btn-primary">Guardar registro</button>
+              <button type="button" id="clearForm" class="btn-ghost">Limpiar</button>
+            </div>
+          </div>
+          <input type="hidden" id="editId" />
+        </form>
+
+        <div style="margin-top:18px">
+          <div class="chips" id="quickChips"></div>
+          <p class="muted" style="margin-top:8px; font-size:12px">Consejo: podés hacer clic en un ticket de abajo para autocompletarlo.</p>
+        </div>
+      </div>
+
+      <!-- Panel derecho: filtros + tabla + totales -->
+      <div class="card right">
+        <div class="toolbar">
+          <div>
+            <label for="filterTicket">Filtrar por ticket</label>
+            <input id="filterTicket" placeholder="Ej: INC- o 1234" />
+          </div>
+          <div>
+            <label for="fromDate">Desde</label>
+            <input type="date" id="fromDate" />
+          </div>
+          <div>
+            <label for="toDate">Hasta</label>
+            <input type="date" id="toDate" />
+          </div>
+          <div class="btns">
+            <button id="exportBtn" class="btn-ghost" title="Exportar JSON">Exportar</button>
+            <button id="importBtn" class="btn-ghost" title="Importar JSON">Importar</button>
+            <button id="clearAllBtn" class="btn-danger" title="Borrar todo">Borrar todo</button>
+          </div>
+        </div>
+
+        <div style="margin-top:12px; overflow:auto; max-height: 50vh; border:1px solid var(--border); border-radius:12px;">
+          <table id="entriesTable">
+            <thead>
+              <tr>
+                <th style="width:110px">Fecha</th>
+                <th style="width:140px">Ticket</th>
+                <th>Descripción</th>
+                <th style="width:110px">Tiempo</th>
+                <th style="width:120px">Acciones</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div style="display:flex; justify-content: space-between; align-items:center; margin-top:14px; gap: 10px; flex-wrap:wrap;">
+          <div>
+            <div class="muted">Totales (filtrados)</div>
+            <div class="total" id="totalFiltered">0h 00m</div>
+          </div>
+          <div>
+            <div class="muted">Total general</div>
+            <div class="total" id="totalAll">0h 00m</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="muted" style="margin-top:18px; font-size:12px">Hecho para vos 🛠️ | Tus datos se guardan en <code>localStorage</code>. Podés exportarlos/importarlos en JSON.</p>
+  </div>
+
+  <script>
+    // ===== Utilidades =====
+    const lsKey = 'ticketTimeEntries_v1';
+    const $ = (s) => document.querySelector(s);
+    const $$ = (s) => Array.from(document.querySelectorAll(s));
+
+    const todayStr = () => new Date().toISOString().slice(0,10);
+
+    function toMinutes(value, unit){
+      const v = Number(value || 0);
+      return unit === 'minutes' ? Math.round(v) : Math.round(v * 60);
+    }
+    function fromMinutes(mins){
+      const h = Math.floor(mins / 60);
+      const m = Math.abs(mins % 60);
+      return `${h}h ${String(m).padStart(2,'0')}m`;
+    }
+    function fmtDate(iso){
+      try {
+        const d = new Date(iso + 'T00:00:00');
+        return d.toLocaleDateString('es-AR');
+      } catch { return iso; }
+    }
+
+    function loadEntries(){
+      try { return JSON.parse(localStorage.getItem(lsKey)) || []; } catch { return []; }
+    }
+    function saveEntries(list){ localStorage.setItem(lsKey, JSON.stringify(list)); }
+
+    function uniqueTickets(entries){
+      const set = new Set(entries.map(e => e.ticket).filter(Boolean));
+      return [...set].slice(-10).reverse(); // últimas 10 referencias
+    }
+
+    // ===== Estado =====
+    let entries = loadEntries();
+
+    // ===== DOM refs =====
+    const form = $('#entryForm');
+    const date = $('#date');
+    const ticket = $('#ticket');
+    const time = $('#time');
+    const unit = $('#unit');
+    const desc = $('#desc');
+    const editId = $('#editId');
+
+    const filterTicket = $('#filterTicket');
+    const fromDate = $('#fromDate');
+    const toDate = $('#toDate');
+
+    const tbody = document.querySelector('#entriesTable tbody');
+    const totalFiltered = $('#totalFiltered');
+    const totalAll = $('#totalAll');
+    const quickChips = $('#quickChips');
+
+    // Inicial
+    date.value = todayStr();
+
+    // ===== Render =====
+    function render(){
+      // Tabla
+      const filtered = applyFilters(entries);
+      tbody.innerHTML = filtered
+        .sort((a,b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+        .map(e => `<tr>
+          <td>${fmtDate(e.date)}</td>
+          <td><span class="chip">${escapeHtml(e.ticket)}</span></td>
+          <td>${escapeHtml(e.desc || '')}</td>
+          <td><strong>${fromMinutes(e.minutes)}</strong></td>
+          <td class="actions">
+            <button data-id="${e.id}" class="btn-ghost act-edit">Editar</button>
+            <button data-id="${e.id}" class="btn-danger act-del">Eliminar</button>
+          </td>
+        </tr>`).join('');
+
+      // Totales
+      const totalAllMins = entries.reduce((acc, e) => acc + (e.minutes||0), 0);
+      const totalFilteredMins = filtered.reduce((acc, e) => acc + (e.minutes||0), 0);
+      totalAll.textContent = fromMinutes(totalAllMins);
+      totalFiltered.textContent = fromMinutes(totalFilteredMins);
+
+      // Chips rápidos de tickets
+      quickChips.innerHTML = uniqueTickets(entries)
+        .map(t => `<span class="chip linklike" data-ticket="${escapeHtml(t)}">${escapeHtml(t)}</span>`)
+        .join('');
+    }
+
+    function applyFilters(list){
+      const q = (filterTicket.value || '').trim().toLowerCase();
+      const fd = (fromDate.value || '0000-01-01');
+      const td = (toDate.value || '9999-12-31');
+      return list.filter(e => {
+        const byTicket = q ? (e.ticket || '').toLowerCase().includes(q) : true;
+        const byDate = e.date >= fd && e.date <= td;
+        return byTicket && byDate;
+      });
+    }
+
+    function escapeHtml(str){
+      return (str+"").replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#39;");
+    }
+
+    // ===== Eventos =====
+    form.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const payload = {
+        id: editId.value || crypto.randomUUID(),
+        date: date.value,
+        ticket: ticket.value.trim(),
+        minutes: toMinutes(time.value, unit.value),
+        desc: desc.value.trim()
+      };
+      if(!payload.ticket){ alert('Ingresá un número de ticket'); return; }
+      if(!payload.date){ alert('Seleccioná la fecha'); return; }
+      if(payload.minutes <= 0){ alert('El tiempo debe ser mayor a 0'); return; }
+
+      const idx = entries.findIndex(e => e.id === payload.id);
+      if(idx >= 0){ entries[idx] = payload; } else { entries.push(payload); }
+      saveEntries(entries);
+      clearFormFields();
+      render();
+    });
+
+    $('#clearForm').addEventListener('click', clearFormFields);
+
+    function clearFormFields(){
+      editId.value = '';
+      date.value = date.value || todayStr();
+      time.value = '';
+      unit.value = 'hours';
+      desc.value = '';
+      // no limpiar ticket a propósito para entradas repetidas
+      form.querySelector('button[type="submit"]').textContent = 'Guardar registro';
+      form.querySelector('button[type="submit"]').className = 'btn-primary';
+    }
+
+    document.addEventListener('click', (e) => {
+      const id = e.target.getAttribute?.('data-id');
+      if(e.target.classList.contains('act-del')){
+        if(confirm('¿Eliminar este registro?')){
+          entries = entries.filter(x => x.id !== id);
+          saveEntries(entries); render();
+        }
+      }
+      if(e.target.classList.contains('act-edit')){
+        const it = entries.find(x => x.id === id);
+        if(!it) return;
+        editId.value = it.id;
+        date.value = it.date;
+        ticket.value = it.ticket;
+        time.value = unit.value === 'minutes' ? it.minutes : (it.minutes/60);
+        desc.value = it.desc || '';
+        form.querySelector('button[type="submit"]').textContent = 'Actualizar registro';
+        form.querySelector('button[type="submit"]').className = 'btn-success';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+      if(e.target.hasAttribute?.('data-ticket')){
+        ticket.value = e.target.getAttribute('data-ticket') || '';
+        ticket.focus();
+      }
+    });
+
+    ['input','change'].forEach(evt => {
+      filterTicket.addEventListener(evt, render);
+      fromDate.addEventListener(evt, render);
+      toDate.addEventListener(evt, render);
+    });
+
+    // Export / Import / Clear all
+    $('#exportBtn').addEventListener('click', () => {
+      const data = JSON.stringify(entries, null, 2);
+      const blob = new Blob([data], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `time-tracker-${new Date().toISOString().slice(0,10)}.json`;
+      a.click(); URL.revokeObjectURL(url);
+    });
+
+    $('#importBtn').addEventListener('click', async () => {
+      const input = document.createElement('input');
+      input.type = 'file'; input.accept = 'application/json';
+      input.onchange = async () => {
+        const file = input.files?.[0]; if(!file) return;
+        try {
+          const text = await file.text();
+          const data = JSON.parse(text);
+          if(!Array.isArray(data)) throw new Error('Formato inválido');
+          // Normalizar entradas importadas
+          const normal = data.map(x => ({
+            id: x.id || crypto.randomUUID(),
+            date: (x.date || '').slice(0,10),
+            ticket: String(x.ticket || ''),
+            minutes: Number(x.minutes || 0),
+            desc: x.desc ? String(x.desc) : ''
+          })).filter(x => x.date && x.ticket && x.minutes>0);
+          entries = normal; saveEntries(entries); render();
+          alert('Importación completa.');
+        } catch(err){ alert('No se pudo importar: ' + err.message); }
+      };
+      input.click();
+    });
+
+    $('#clearAllBtn').addEventListener('click', () => {
+      if(confirm('Esto borrará TODOS los registros guardados en este navegador. ¿Continuar?')){
+        entries = []; saveEntries(entries); render();
+      }
+    });
+
+    // Primera render
+    render();
+  </script>
+</body>
+</html>
